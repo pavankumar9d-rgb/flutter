@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MaterialApp(home: ApiPage()));
@@ -15,16 +15,38 @@ class ApiPage extends StatefulWidget {
 
 class _ApiPageState extends State<ApiPage> {
   List users = [];
+  bool loading = true;
+  String error = '';
 
   Future<void> fetchUsers() async {
-    final response = await http.get(
-      Uri.parse('https://jsonplaceholder.typicode.com/users'),
-    );
+    HttpClient? client;
+    try {
+      client = HttpClient();
+      final request = await client.getUrl(
+        Uri.parse('https://jsonplaceholder.typicode.com/users'),
+      );
+      final response = await request.close();
 
-    if (response.statusCode == 200) {
+      if (response.statusCode == 200) {
+        final body = await response.transform(utf8.decoder).join();
+        setState(() {
+          users = json.decode(body);
+          loading = false;
+          error = '';
+        });
+      } else {
+        setState(() {
+          loading = false;
+          error = 'Request failed: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
       setState(() {
-        users = json.decode(response.body);
+        loading = false;
+        error = 'Error fetching data: $e';
       });
+    } finally {
+      client?.close();
     }
   }
 
@@ -38,19 +60,23 @@ class _ApiPageState extends State<ApiPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('REST API Data')),
-      body: users.isEmpty
+      body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: users.length,
-              itemBuilder: (context, index) {
-                final user = users[index];
-                return ListTile(
-                  leading: CircleAvatar(child: Text(user['id'].toString())),
-                  title: Text(user['name']),
-                  subtitle: Text(user['email']),
-                );
-              },
-            ),
+          : error.isNotEmpty
+              ? Center(child: Text(error))
+              : ListView.builder(
+                  itemCount: users.length,
+                  itemBuilder: (context, index) {
+                    final user = users[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        child: Text(user['id'].toString()),
+                      ),
+                      title: Text(user['name']),
+                      subtitle: Text(user['email']),
+                    );
+                  },
+                ),
     );
   }
 }
